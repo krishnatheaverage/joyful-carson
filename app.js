@@ -1,4 +1,4 @@
-// State Management
+// Stats state
 let stats = {
     scanned: 0,
     policies: 4,
@@ -6,204 +6,354 @@ let stats = {
     fixed: 0
 };
 
+// Security / Compliance Policies for KARA
 let policies = [
-    { id: 'POL-001', name: 'Protect Main Branch', category: 'git', trigger: 'push origin main', desc: 'Block direct code commits to the master/main branch.', active: true, severity: 'High' },
-    { id: 'POL-002', name: 'Redact Email Credentials', category: 'email', trigger: 'gmail.com', desc: 'Prevent outbound emails to public domains from containing passwords or tokens.', active: true, severity: 'High' },
-    { id: 'POL-003', name: 'Mask API Secret Keys', category: 'api', trigger: 'sk-live-', desc: 'Block plaintext API secrets in request headers or body.', active: true, severity: 'Critical' },
-    { id: 'POL-004', name: 'Database Guardrail', category: 'db', trigger: 'DROP TABLE', desc: 'Intercept destructive SQL commands and enforce migrations.', active: true, severity: 'Critical' }
+    { id: 'POL-001', name: 'Optimize Cut Yield', category: 'cut', trigger: 'waste: 42%', desc: 'Flag and recalculate laser cutting paths yielding under 60% yield.', active: true, severity: 'Medium' },
+    { id: 'POL-002', name: 'Provenance Verification', category: 'provenance', trigger: 'CONFLICT_ZONE', desc: 'Block import registrations missing blockchain tracing hashes.', active: true, severity: 'Critical' },
+    { id: 'POL-003', name: 'Clarity Mismatch Protection', category: 'clarity', trigger: 'variance: VS2', desc: 'Intercept stone syncs where clarity varies > 0.5 steps from registry.', active: true, severity: 'High' },
+    { id: 'POL-004', name: 'Synthetic CVD Disclosure', category: 'disclosure', trigger: 'NATURAL_CVD_MISMATCH', desc: 'Block lab-grown CVD diamonds from listing in natural diamond indexes.', active: true, severity: 'Critical' }
 ];
 
 let auditLogs = [];
 let currentScenario = null;
-let simulationInterval = null;
-let currentSimulationStepIndex = 0;
-let isSimulatorRunning = false;
+let currentStepIndex = 0;
+let isScanning = false;
 
-// Predefined Scenario Steps
+// 3D Wireframe Diamond Canvas Renderer
+const canvas = document.getElementById('diamond-canvas');
+const ctx = canvas.getContext('2d');
+let rotationAngle = 0;
+let isFastRotation = false;
+
+// Diamond Geometry Vertices (X, Y, Z)
+const vertices = [];
+const edges = [];
+
+function generateDiamondGeometry() {
+    // Top flat table face points (radius 20, height +25)
+    for (let i = 0; i < 8; i++) {
+        const ang = (i * Math.PI) / 4;
+        vertices.push({ x: Math.cos(ang) * 16, y: -25, z: Math.sin(ang) * 16 });
+    }
+    // Crown outer points (radius 32, height +10)
+    for (let i = 0; i < 8; i++) {
+        const ang = (i * Math.PI) / 4;
+        vertices.push({ x: Math.cos(ang) * 30, y: -10, z: Math.sin(ang) * 30 });
+    }
+    // Girdle belt points (radius 34, height 0)
+    for (let i = 0; i < 8; i++) {
+        const ang = (i * Math.PI) / 4;
+        vertices.push({ x: Math.cos(ang) * 34, y: 0, z: Math.sin(ang) * 34 });
+    }
+    // Bottom culet point (height -45)
+    vertices.push({ x: 0, y: 40, z: 0 }); // Index 24 (culet)
+
+    // Edges connections
+    // 1. Table face loop (0 to 7)
+    for (let i = 0; i < 8; i++) {
+        edges.push([i, (i + 1) % 8]);
+    }
+    // 2. Crown upper facets (Table to Crown Outer: i -> i + 8)
+    for (let i = 0; i < 8; i++) {
+        edges.push([i, i + 8]);
+        edges.push([i, ((i + 1) % 8) + 8]);
+    }
+    // 3. Crown loop (8 to 15)
+    for (let i = 0; i < 8; i++) {
+        edges.push([i + 8, ((i + 1) % 8) + 8]);
+    }
+    // 4. Girdle facets (Crown to Girdle Outer: i + 8 -> i + 16)
+    for (let i = 0; i < 8; i++) {
+        edges.push([i + 8, i + 16]);
+    }
+    // 5. Girdle loop (16 to 23)
+    for (let i = 0; i < 8; i++) {
+        edges.push([i + 16, ((i + 1) % 8) + 16]);
+    }
+    // 6. Lower Pavilion facets (Girdle to Culet: i + 16 -> 24)
+    for (let i = 0; i < 8; i++) {
+        edges.push([i + 16, 24]);
+    }
+}
+
+// 3D Projection Math
+function render3DDiamond() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Scale canvas to match bounding container size dynamically
+    const width = canvas.width = canvas.offsetWidth;
+    const height = canvas.height = canvas.offsetHeight;
+    
+    const scale = 2.4;
+    const distance = 100;
+    
+    // Increment rotation speed
+    rotationAngle += isFastRotation ? 0.08 : 0.015;
+    
+    const pitch = 0.4; // constant look-down angle
+    const cosP = Math.cos(pitch);
+    const sinP = Math.sin(pitch);
+    const cosY = Math.cos(rotationAngle);
+    const sinY = Math.sin(rotationAngle);
+    
+    // Map & Project Vertices
+    const projected = vertices.map(v => {
+        // Rotate Y (Yaw)
+        let x1 = v.x * cosY - v.z * sinY;
+        let z1 = v.x * sinY + v.z * cosY;
+        let y1 = v.y;
+        
+        // Rotate X (Pitch)
+        let y2 = y1 * cosP - z1 * sinP;
+        let z2 = y1 * sinP + z1 * cosP;
+        
+        // Perspective projection
+        const pScale = (distance / (z2 + distance)) * scale;
+        return {
+            x: x1 * pScale + width / 2,
+            y: y2 * pScale + height / 2,
+            z: z2
+        };
+    });
+    
+    // Draw edges
+    edges.forEach(edge => {
+        const p1 = projected[edge[0]];
+        const p2 = projected[edge[1]];
+        
+        // Depth-based transparency/fade
+        const depth = (p1.z + p2.z) / 2;
+        const alpha = Math.max(0.08, 1 - (depth + 40) / 100);
+        
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        
+        // Color lines - shift to cyan or white
+        if (isFastRotation) {
+            ctx.strokeStyle = `rgba(14, 165, 233, ${alpha * 0.85})`;
+            ctx.lineWidth = 1.2;
+        } else {
+            ctx.strokeStyle = `rgba(224, 242, 254, ${alpha * 0.65})`;
+            ctx.lineWidth = 0.8;
+        }
+        ctx.stroke();
+    });
+    
+    // Draw Vertices as glowing dots
+    projected.forEach(p => {
+        const alpha = Math.max(0.1, 1 - (p.z + 40) / 100);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+        ctx.fillStyle = isFastRotation ? `rgba(14, 165, 233, ${alpha})` : `rgba(255, 255, 255, ${alpha})`;
+        ctx.fill();
+        
+        if (isFastRotation && Math.random() > 0.8) {
+            // Draw a subtle sparkle halo
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(14, 165, 233, 0.15)`;
+            ctx.stroke();
+        }
+    });
+    
+    requestAnimationFrame(render3DDiamond);
+}
+
+// Preconfigured Diamond Scan Scenarios
 const scenarios = {
-    'git-direct': {
-        name: 'Deploy Bugfix to Production',
+    'rough-provenance': {
+        name: 'Rough Import Registry (Provenance)',
         steps: [
-            { type: 'thought', text: 'Auth bypass detected in auth.js. I need to apply the hotfix to production immediately.' },
-            { type: 'action', text: 'git commit -am "fix: authentication validation bypass" && git push origin main' },
-            { type: 'check', text: 'Scanning commit payload and target branch...' },
-            { 
-                type: 'policy_check', 
-                policyId: 'POL-001', 
-                matchText: 'push origin main',
-                violationStep: {
-                    type: 'violation',
-                    text: 'POL-001 Triggered: Direct commit to main branch is blocked.',
-                    fixTitle: '[Archal Fix] Redirect direct commits to feature branch',
-                    fixDesc: 'Agent attempted to commit directly to the protected main branch. Archal has blocked this commit and redirected the changes to a new feature branch for audit.',
-                    branchFrom: 'main',
-                    branchTo: 'feature/agent-patch-auth',
-                    diff: `@@ -12,8 +12,8 @@
-- // Production hotfix commit by agent
-  function verifyUser(username, token) {
--     if (token === "TEMP_BYPASS_TOKEN") return true; 
-+     if (crypto.timingSafeEqual(Buffer.from(token), Buffer.from(process.env.AUTH_SECRET))) return true;
-      return db.checkUser(username, token);
-  }`
-                },
-                passStep: {
-                    type: 'pass',
-                    text: 'Direct commit allowed (POL-001 Inactive). Pushing changes to master branch directly!'
-                }
-            }
-        ],
-        successSteps: [
-            { type: 'fix', text: 'Creating branch feature/agent-patch-auth and pushing commits...' },
-            { type: 'fix', text: 'Fix Pull Request #142 opened: "Merge feature/agent-patch-auth into main"' },
-            { type: 'pass', text: 'PR merged successfully! Code verified via CI. Sandbox run completed safely.' }
-        ]
-    },
-    'email-leak': {
-        name: 'Customer Credentials Sync',
-        steps: [
-            { type: 'thought', text: 'Sync log failure detected for customer krish@external.com. Sending log report to support inbox.' },
-            { type: 'action', text: "mail -s 'Diagnostic Log' support@gmail.com -body 'Sync status: error, token: sk-live-55928a3f812d, pass_hash: $2b$12$eX82'" },
-            { type: 'check', text: 'Scanning email headers and outbound recipients...' },
+            { type: 'thought', text: 'Staging optical scans on raw rough specimen import #SL-8834.' },
+            { type: 'action', text: 'laser.tomography.scan() -> mapping spatial volume grid...' },
+            { type: 'action', text: 'ledger.fetchOriginProvenance(rough_id: "SL-8834")' },
+            { type: 'check', text: 'Evaluating Kimberley Process blockchain certificate coordinates...' },
             {
                 type: 'policy_check',
                 policyId: 'POL-002',
-                matchText: 'gmail.com',
+                matchText: 'CONFLICT_ZONE',
                 violationStep: {
                     type: 'violation',
-                    text: 'POL-002 Triggered: Outbound mail containing plaintext tokens/hashes sent to public domain blocked.',
-                    fixTitle: '[Archal Review] Outbound Email Redaction Approval',
-                    fixDesc: 'Agent attempted to send database secrets and API tokens to an external public email address (support@gmail.com). Archal intercepted the dispatch to apply strict masking.',
-                    emailTo: 'support@gmail.com',
-                    emailSubject: 'Diagnostic Log [Archal Filtered]',
-                    emailBody: `Sync status: error, token: <span class="flagged-redaction">sk-live-55928a3f812d</span><span class="redaction-fix">[REDACTED_BY_ARCHAL]</span>, pass_hash: <span class="flagged-redaction">$2b$12$eX82</span><span class="redaction-fix">[REDACTED_BY_ARCHAL]</span>`,
-                    redirect: 'support@archal-company.internal'
+                    text: 'POL-002 Triggered: Sierra Leone import SL-8834 lacks verified origin certificate. Action blocked.',
+                    fixTitle: '[KARA Fix] Link Kimberley Blockchain Origin Registry',
+                    fixDesc: 'Agent attempted to register a rough diamond sourced from an unverified origin (SL-8834). KARA blocked the transaction and generated a PR to link verified certificates.',
+                    branchFrom: 'main',
+                    branchTo: 'provenance/verify-kp-8834',
+                    diff: `@@ -4,4 +4,4 @@
+- source_origin: "UNVERIFIED / CONFLICT_ZONE_SIERRA_LEONE"
++ source_origin: "KP-BLOCK-INDEX-8834291-KBL"
++ blockchain_verification_hash: "0x8fa92b3c7793de"
++ provenance_approved: true`
                 },
                 passStep: {
                     type: 'pass',
-                    text: 'Outbound email sent to public domain containing raw hash secrets (POL-002 Inactive).'
+                    text: 'Provenance checked bypassed (POL-002 Inactive). Rough stone index updated without tracing records.'
                 }
             }
         ],
         successSteps: [
-            { type: 'fix', text: 'Redacting sensitive keys from email body...' },
-            { type: 'fix', text: 'Rerouting recipient to internal whitelisted support inbox...' },
-            { type: 'pass', text: 'Masked email dispatched successfully to support@archal-company.internal. Agent run finished.' }
+            { type: 'fix', text: 'Linking verified Kimberley block ID index KP-BLOCK-INDEX-8834291-KBL...' },
+            { type: 'fix', text: 'Injecting verified cryptographic hash 0x8fa92b3c...' },
+            { type: 'pass', text: 'Rough diamond import SL-8834 successfully registered into conflict-free registry ledger.' }
         ]
     },
-    'api-secret': {
-        name: 'External Service Integration',
+    'gia-conflict': {
+        name: 'GIA Certificate Sync (Clarity)',
         steps: [
-            { type: 'thought', text: 'Need to retrieve real-time API logs. Making HTTP POST to billing gateway.' },
-            { type: 'action', text: "curl -X POST -H 'Authorization: Bearer sk-live-55928a3f812d' https://api.stripe-billing.com/v1/metrics" },
-            { type: 'check', text: 'Analyzing header credentials payload...' },
+            { type: 'thought', text: 'Scanning cut specimen facets. Comparing mapping array with external GIA database.' },
+            { type: 'action', text: 'spectrometer.gradeClarity() -> mapped 3 internal carbon crystals in crown.' },
+            { type: 'action', text: 'gia.fetchRecord(cert_id: "119283")' },
+            { type: 'check', text: 'Comparing physical clarity grade VS2 against certified VVS1 records...' },
             {
                 type: 'policy_check',
                 policyId: 'POL-003',
-                matchText: 'sk-live-',
+                matchText: 'variance: VS2',
                 violationStep: {
                     type: 'violation',
-                    text: 'POL-003 Triggered: Plaintext secret Stripe API token in HTTP request header blocked.',
-                    fixTitle: '[Archal Fix] Mask Plaintext API Credentials',
-                    fixDesc: 'Agent exposed a production Stripe API key in a raw HTTP header call. Archal blocked the request and is opening a PR to migrate to environment variables.',
+                    text: 'POL-003 Triggered: Physical clarity grade VS2 deviates from GIA VVS1 certificate. Action blocked.',
+                    fixTitle: '[KARA Review] Schedule Dual-Inspector Clarity Auditing',
+                    fixDesc: 'KARA mapped a clarity level of VS2 on cert #119283, which is certified VVS1 (> 0.5 step variance). Scanning registry update blocked for audit route.',
                     branchFrom: 'main',
-                    branchTo: 'config/mask-stripe-key',
-                    diff: `@@ -1,3 +1,3 @@
-- const stripe = require('stripe')('sk-live-55928a3f812d');
-+ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);`
+                    branchTo: 'audit/clarity-variance-119283',
+                    diff: `@@ -10,4 +10,4 @@
+- gia_clarity_grade: "VVS1"
++ scanned_clarity_variance: "VS2"
++ audit_state: "PENDING_DUAL_HUMAN_INSPECTION"
++ safety_hold_active: true`
                 },
                 passStep: {
                     type: 'pass',
-                    text: 'Plaintext secret API keys allowed in request (POL-003 Inactive). Dispatched call.'
+                    text: 'Clarity variance validation bypassed (POL-003 Inactive). Mismatched GIA record synced to inventory.'
                 }
             }
         ],
         successSteps: [
-            { type: 'fix', text: 'Replacing API credentials token with process.env.STRIPE_SECRET_KEY...' },
-            { type: 'fix', text: 'Adding entry to local environment sandbox mock keys...' },
-            { type: 'pass', text: 'API call successfully dispatched via environment proxy. Agent run complete.' }
+            { type: 'fix', text: 'Routing record to human dual-grading inspection queue...' },
+            { type: 'fix', text: 'Applying safety-hold locks in inventory API registry...' },
+            { type: 'pass', text: 'Sync locked. Inspection ticket generated. Diamond registry safe-state secured.' }
         ]
     },
-    'db-destructive': {
-        name: 'Database Optimization Run',
+    'cvd-disclosure': {
+        name: 'Lab-Grown CVD Check (Disclosure)',
         steps: [
-            { type: 'thought', text: 'Clean-up process: dropping unused backup logs table user_backups_2025.' },
-            { type: 'action', text: "db.query('DROP TABLE user_backups_2025')" },
-            { type: 'check', text: 'Scanning SQL statement structure...' },
+            { type: 'thought', text: 'Measuring UV spectrometry lattice absorption to confirm stone structure.' },
+            { type: 'action', text: 'spectrometer.measureAbsorptionRatio() -> ratio: 1.48 (Lab range)' },
+            { type: 'check', text: 'Verifying classification index target for the listing request...' },
             {
                 type: 'policy_check',
                 policyId: 'POL-004',
-                matchText: 'DROP TABLE',
+                matchText: 'NATURAL_CVD_MISMATCH',
                 violationStep: {
                     type: 'violation',
-                    text: 'POL-004 Triggered: Direct destructive raw DROP statement blocked.',
-                    fixTitle: '[Archal Fix] Enforce Safe Database Migrations',
-                    fixDesc: 'Agent attempted to run a destructive raw DROP TABLE query directly. Archal intercepted it to redirect it into a safe schema migration change log.',
+                    text: 'POL-004 Triggered: CVD lab-grown diamond registry to natural index blocked.',
+                    fixTitle: '[KARA Fix] Apply CVD Lab-Grown Disclosure Tagging',
+                    fixDesc: 'Spectrometer detected synthetic CVD growth markers. Intercepted attempts to list the stone as natural, generating index re-routing parameters.',
                     branchFrom: 'main',
-                    branchTo: 'migration/safe-db-drop',
-                    diff: `@@ -0,0 +1,5 @@
-+ -- New migration file: migrations/0034_drop_backups.sql
-+ ALTER TABLE user_backups_2025 RENAME TO archived_user_backups;
-+ -- Scheduled for lazy deletion in 30 days
-+ INSERT INTO migration_registry (version, run_date) VALUES ('0034', NOW());`
+                    branchTo: 'disclosure/re-route-cvd',
+                    diff: `@@ -2,4 +2,4 @@
+- diamond_origin_class: "NATURAL_EARTH_MINED"
++ diamond_origin_class: "LAB_GROWN_CVD"
+- listing_index: "NATURAL_DIAMOND_EXCHANGE"
++ listing_index: "CVD_SYNTHETIC_EXCHANGE"`
                 },
                 passStep: {
                     type: 'pass',
-                    text: 'Destructive DROP TABLE query executed directly on database instance (POL-004 Inactive).'
+                    text: 'Synthetic check bypassed (POL-004 Inactive). Lab-grown diamond registered on natural exchange index.'
                 }
             }
         ],
         successSteps: [
-            { type: 'fix', text: 'Wrapping DROP command into transaction migration script...' },
-            { type: 'fix', text: 'Creating safe backup schema rename migration registry...' },
-            { type: 'pass', text: 'Migration deployed and verified against database replicas. Run completed.' }
+            { type: 'fix', text: 'Re-routing registration parameters to CVD synthetic index...' },
+            { type: 'fix', text: 'Applying synthetic warning flag tags to catalog record metadata...' },
+            { type: 'pass', text: 'Disclosure tags applied successfully. Re-routed listing index. Stone indexed.' }
+        ]
+    },
+    'cut-efficiency': {
+        name: 'Laser Cutting Plan (Cut Yield)',
+        steps: [
+            { type: 'thought', text: 'Staging laser cutting coordinates mapping to plan rough cutting.' },
+            { type: 'action', text: 'cuttingPlanner.generateLaserPaths() -> target: Round Brilliant (waste: 42%)' },
+            { type: 'check', text: 'Evaluating material yield parameters...' },
+            {
+                type: 'policy_check',
+                policyId: 'POL-001',
+                matchText: 'waste: 42%',
+                violationStep: {
+                    type: 'violation',
+                    text: 'POL-001 Triggered: Cutting yield is 58% (waste 42% exceeding threshold). Laser lock active.',
+                    fixTitle: '[KARA Fix] Recalculate Laser Path Proportions',
+                    fixDesc: 'Planned cut path wasted too much volume. Recalculated coordinates to tweak table width and crown angles to maximize carat weight yield.',
+                    branchFrom: 'main',
+                    branchTo: 'cut/yield-optimization-882',
+                    diff: `@@ -12,6 +12,6 @@
+- table_size_pct: 61.2
++ table_size_pct: 57.5
+- crown_angle_deg: 34.5
++ crown_angle_deg: 32.8
+- estimated_carats: 1.84
++ estimated_carats: 2.12`
+                },
+                passStep: {
+                    type: 'pass',
+                    text: 'Low yield cutting plan permitted (POL-001 Inactive). Initializing laser cut paths.'
+                }
+            }
+        ],
+        successSteps: [
+            { type: 'fix', text: 'Adjusting laser cutter focus table parameters to 57.5%...' },
+            { type: 'fix', text: 'Setting target output carat estimate weight to 2.12...' },
+            { type: 'pass', text: 'Yield coordinates optimized. Laser paths sent to cutter console safely. Cut ready.' }
         ]
     }
 };
 
-// Custom Scenarios Creator based on Custom Policies
-function runCustomScenario(command, activePolicy) {
+// Custom policy scanner evaluator
+function runCustomScan(inputCommand, triggeredPolicy) {
     return {
-        name: 'Custom Action Run',
+        name: 'Custom Parameter Scan',
         steps: [
-            { type: 'thought', text: 'Executing custom administrator command input.' },
-            { type: 'action', text: command },
-            { type: 'check', text: `Verifying action against custom policy rules...` },
+            { type: 'thought', text: 'Scanning custom laser telemetry string parameters.' },
+            { type: 'action', text: inputCommand },
+            { type: 'check', text: 'Verifying custom parameter strings against local guardrail rules...' },
             {
                 type: 'policy_check',
-                policyId: activePolicy.id,
-                matchText: activePolicy.trigger,
+                policyId: triggeredPolicy.id,
+                matchText: triggeredPolicy.trigger,
                 violationStep: {
                     type: 'violation',
-                    text: `${activePolicy.name} Violated: Found matching block keyword "${activePolicy.trigger}". Action Blocked.`,
-                    fixTitle: `[Archal Custom Fix] Secure ${activePolicy.name}`,
-                    fixDesc: `Custom safety rule violation occurred. Target keyword "${activePolicy.trigger}" was found inside the command payload. Archal blocked raw execution and created a safety wrapper.`,
+                    text: `Guardrail ${triggeredPolicy.id} Violated: Found block parameter "${triggeredPolicy.trigger}". Laser locks active.`,
+                    fixTitle: `[KARA Custom Fix] Override Custom Parameter ${triggeredPolicy.id}`,
+                    fixDesc: `Custom safety rule blocked registry process. Found target keyword "${triggeredPolicy.trigger}" in inputs. Generated safety correction configuration parameters.`,
                     branchFrom: 'main',
-                    branchTo: 'patch/custom-guardrail',
+                    branchTo: 'custom/guardrail-patch',
                     diff: `@@ -1,2 +1,2 @@
-- // Blocked raw usage of: ${command}
-+ // Encrypted / Configured wrapper for policy constraint: ${activePolicy.name}`
+- // Blocked input: ${inputCommand}
++ // Encrypted / Configured parameters enforcing: ${triggeredPolicy.name}`
                 },
                 passStep: {
                     type: 'pass',
-                    text: `Command executed: Policy ${activePolicy.name} was disabled or did not match.`
+                    text: `Telemetry parameter scanned. Rule ${triggeredPolicy.name} was disabled or bypassed.`
                 }
             }
         ],
         successSteps: [
-            { type: 'fix', text: `Wrapping custom payload under security policy metadata...` },
-            { type: 'pass', text: 'Execution redirected to safe sandbox buffer. Run finished successfully.' }
+            { type: 'fix', text: 'Applying safety envelope configuration tags...' },
+            { type: 'pass', text: 'Scan telemetry verified. Parameters safely logged. Registration complete.' }
         ]
     };
 }
 
-// Initialize Application UI
+// Initial Loading
 document.addEventListener('DOMContentLoaded', () => {
+    generateDiamondGeometry();
+    render3DDiamond();
     renderPolicies();
     updateStats();
     setupEventHandlers();
 });
 
-// Render policies in Left Panel
+// Render policy switches
 function renderPolicies() {
     const container = document.getElementById('policies-container');
     container.innerHTML = '';
@@ -222,7 +372,7 @@ function renderPolicies() {
                 <div class="policy-meta">
                     <span class="policy-name">${p.name}</span>
                     <span class="policy-tag tag-${p.category}">${p.category}</span>
-                    <span class="tag-severity">${p.severity}</span>
+                    <span class="tag-severity" style="font-size:0.55rem; color:var(--text-secondary); opacity:0.8;">${p.severity}</span>
                 </div>
                 <div class="policy-desc">${p.desc}</div>
             </div>
@@ -230,20 +380,19 @@ function renderPolicies() {
         container.appendChild(item);
     });
     
-    // Update active policies stat counter
     stats.policies = policies.filter(p => p.active).length;
     updateStats();
 }
 
 function togglePolicy(id) {
-    const policy = policies.find(p => p.id === id);
-    if (policy) {
-        policy.active = !policy.active;
+    const p = policies.find(p => p.id === id);
+    if (p) {
+        p.active = !p.active;
         renderPolicies();
     }
 }
 
-// Add Custom Policy Form Handler
+// Add Custom Policy Form
 document.getElementById('policy-form').addEventListener('submit', (e) => {
     e.preventDefault();
     const nameInput = document.getElementById('policy-name');
@@ -255,7 +404,7 @@ document.getElementById('policy-form').addEventListener('submit', (e) => {
         name: nameInput.value,
         category: typeInput.value,
         trigger: triggerInput.value,
-        desc: `Block payload matching keyword "${triggerInput.value}".`,
+        desc: `Block command inputs matching parameter keyword "${triggerInput.value}".`,
         active: true,
         severity: 'Medium'
     };
@@ -263,12 +412,11 @@ document.getElementById('policy-form').addEventListener('submit', (e) => {
     policies.push(newPolicy);
     renderPolicies();
     
-    // Reset Form fields
     nameInput.value = '';
     triggerInput.value = '';
 });
 
-// Update stats elements
+// Update stats numbers
 function updateStats() {
     document.getElementById('stats-scanned').innerText = stats.scanned;
     document.getElementById('stats-policies').innerText = stats.policies;
@@ -276,7 +424,7 @@ function updateStats() {
     document.getElementById('stats-fixed').innerText = stats.fixed;
 }
 
-// Navigation Tabs
+// Event hooks
 function setupEventHandlers() {
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -284,101 +432,99 @@ function setupEventHandlers() {
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             
             btn.classList.add('active');
-            const targetTab = btn.getAttribute('data-tab');
-            document.getElementById(targetTab).classList.add('active');
+            const tabId = btn.getAttribute('data-tab');
+            document.getElementById(tabId).classList.add('active');
         });
     });
 
-    document.getElementById('btn-run-agent').addEventListener('click', startSimulation);
-    document.getElementById('btn-reset-agent').addEventListener('click', resetSimulation);
+    document.getElementById('btn-run-agent').addEventListener('click', startScanSimulation);
+    document.getElementById('btn-reset-agent').addEventListener('click', resetScanSimulation);
 }
 
-// Simulator Core
-function startSimulation() {
-    if (isSimulatorRunning) return;
+// Running the simulation
+function startScanSimulation() {
+    if (isScanning) return;
     
-    isSimulatorRunning = true;
-    currentSimulationStepIndex = 0;
+    isScanning = true;
+    currentStepIndex = 0;
     
-    // Disable controls during running
     document.getElementById('btn-run-agent').disabled = true;
     document.getElementById('scenario-selector').disabled = true;
     document.getElementById('btn-reset-agent').disabled = false;
-
-    // Pulse lights running state
-    setSystemState('running', 'Agent Executing');
+    
+    // Animate spinning fast and laser line
+    isFastRotation = true;
+    document.getElementById('visualizer-container').classList.add('laser-active');
+    
+    setSystemState('running', 'Laser Mapping Active');
 
     const scenarioKey = document.getElementById('scenario-selector').value;
     currentScenario = scenarios[scenarioKey];
 
-    // Clear Console
     const consoleBody = document.getElementById('console-body');
     consoleBody.innerHTML = '<span class="console-cursor" id="console-cursor"></span>';
     
-    // Clear PR Panel
-    resetPRPanel();
-
-    runNextSimulationStep();
+    resetResolutionPanel();
+    runNextStep();
 }
 
-function runNextSimulationStep() {
-    if (!isSimulatorRunning) return;
-
-    const currentStep = currentScenario.steps[currentSimulationStepIndex];
+function runNextStep() {
+    if (!isScanning) return;
     
-    if (!currentStep) {
-        // Safe completion without violation (if policy was disabled)
-        logToConsole('line-info', 'Agent execution finished without violations.');
-        setSystemState('idle', 'System Idle');
-        finishScenarioRun('success');
+    const step = currentScenario.steps[currentStepIndex];
+    if (!step) {
+        logToConsole('line-info', 'Scan finished. Crystal integrity logs stored.');
+        setSystemState('idle', 'Scan Core Idle');
+        isFastRotation = false;
+        document.getElementById('visualizer-container').classList.remove('laser-active');
+        finishScanRun('success');
         return;
     }
 
     setTimeout(() => {
-        if (currentStep.type === 'thought') {
-            logToConsole('line-thought', currentStep.text);
+        if (step.type === 'thought') {
+            logToConsole('line-thought', step.text);
             stats.scanned++;
             updateStats();
-            currentSimulationStepIndex++;
-            runNextSimulationStep();
+            currentStepIndex++;
+            runNextStep();
         } 
-        else if (currentStep.type === 'action') {
-            logToConsole('line-action', currentStep.text);
-            currentSimulationStepIndex++;
-            runNextSimulationStep();
+        else if (step.type === 'action') {
+            logToConsole('line-action', step.text);
+            currentStepIndex++;
+            runNextStep();
         } 
-        else if (currentStep.type === 'check') {
-            logToConsole('line-check', currentStep.text);
-            currentSimulationStepIndex++;
-            runNextSimulationStep();
+        else if (step.type === 'check') {
+            logToConsole('line-check', step.text);
+            currentStepIndex++;
+            runNextStep();
         } 
-        else if (currentStep.type === 'policy_check') {
-            // Check if policy is active
-            const checkedPolicy = policies.find(p => p.id === currentStep.policyId);
+        else if (step.type === 'policy_check') {
+            const checkedPolicy = policies.find(p => p.id === step.policyId);
             
             if (checkedPolicy && checkedPolicy.active) {
-                // Violated!
-                logToConsole('line-violation', currentStep.violationStep.text);
+                // Violated! Block and show PR
+                logToConsole('line-violation', step.violationStep.text);
                 stats.blocked++;
                 updateStats();
-                setSystemState('blocked', 'Action Intercepted');
+                setSystemState('blocked', 'Scan Intercepted');
+                isFastRotation = false;
+                document.getElementById('visualizer-container').classList.remove('laser-active');
                 
-                // Show resolution desk
                 setTimeout(() => {
-                    showResolutionPR(currentStep.violationStep);
-                }, 500);
+                    showResolutionPR(step.violationStep);
+                }, 400);
             } else {
-                // Policy inactive, pass execution
-                logToConsole('line-check', `Policy ${currentStep.policyId} is inactive/disabled. Skipping guardrail.`);
-                logToConsole('line-pass', currentStep.passStep.text);
-                currentSimulationStepIndex++;
-                runNextSimulationStep();
+                // Bypass
+                logToConsole('line-check', `Guardrail policy ${step.policyId} is inactive. Skipping check.`);
+                logToConsole('line-pass', step.passStep.text);
+                currentStepIndex++;
+                runNextStep();
             }
         }
     }, 1200);
 }
 
-// Print lines into Terminal
 function logToConsole(cssClass, text) {
     const consoleBody = document.getElementById('console-body');
     const cursor = document.getElementById('console-cursor');
@@ -391,18 +537,14 @@ function logToConsole(cssClass, text) {
     consoleBody.scrollTop = consoleBody.scrollHeight;
 }
 
-// Set header lights status
 function setSystemState(state, text) {
     const pulse = document.getElementById('global-status-pulse');
     const statusText = document.getElementById('global-status-text');
-    const terminalPulse = document.querySelector('.status-pulse');
-    
     pulse.className = `status-pulse ${state}`;
-    if (terminalPulse) terminalPulse.className = `status-pulse ${state}`;
     statusText.innerText = text;
 }
 
-// Populates Resolution desk
+// Show PR resolution details
 function showResolutionPR(violation) {
     const panel = document.getElementById('resolution-panel-content');
     panel.innerHTML = '';
@@ -410,132 +552,84 @@ function showResolutionPR(violation) {
     const activeDiv = document.createElement('div');
     activeDiv.className = 'resolution-active';
     
-    let templateHTML = '';
+    activeDiv.innerHTML = `
+        <div class="pr-header">
+            <span class="pr-badge">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="margin-right: 0.15rem;">
+                    <circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 9v7a3 3 0 0 0 3 3h6"/><path d="M18 15V9a3 3 0 0 0-3-3h-3"/><path d="M12 3l-3 3 3 3"/>
+                </svg>
+                Correction PR
+            </span>
+            <div class="pr-title">${violation.fixTitle}</div>
+            <div class="pr-branch-flow">
+                <span class="branch-tag">${violation.branchFrom}</span>
+                <span class="arrow-right" style="color: var(--accent-cyan); font-weight: bold;">&larr;</span>
+                <span class="branch-tag" style="border-color: rgba(14, 165, 233, 0.4); color: var(--accent-cyan);">${violation.branchTo}</span>
+            </div>
+        </div>
+        <div class="pr-description-card">
+            <h4>Scan Diagnostics</h4>
+            <p>${violation.fixDesc}</p>
+        </div>
+        <div class="diff-container">
+            <div class="diff-file-header">
+                <span>Certification Registry Patch</span>
+                <span style="font-size:0.6rem; color: var(--accent-green);">+ Correct / - Mismatched</span>
+            </div>
+            <div class="diff-body">
+                ${violation.diff.split('\n').map((line, idx) => {
+                    let cls = '';
+                    if (line.startsWith('-')) cls = 'deletion';
+                    else if (line.startsWith('+')) cls = 'addition';
+                    else if (line.startsWith('@@')) cls = 'info';
+                    
+                    return `
+                        <div class="diff-line ${cls}">
+                            <span class="diff-line-num">${idx + 1}</span>
+                            <span class="diff-line-content">${escapeHTML(line)}</span>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        </div>
+        <div class="resolution-actions">
+            <button class="btn-primary" onclick="resolveScanCorrection('approve')">Approve & Sync</button>
+            <button class="btn-secondary" style="border-color: rgba(244, 63, 94, 0.4); color: var(--accent-red);" onclick="resolveScanCorrection('reject')">Abort Scan</button>
+        </div>
+    `;
     
-    if (violation.diff) {
-        // Git/API/DB Code Diff PR
-        templateHTML = `
-            <div class="pr-header">
-                <span class="pr-badge">
-                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="margin-right: 0.15rem;">
-                        <circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 9v7a3 3 0 0 0 3 3h6"/><path d="M18 15V9a3 3 0 0 0-3-3h-3"/><path d="M12 3l-3 3 3 3"/>
-                    </svg>
-                    Fix Pull Request
-                </span>
-                <div class="pr-title">${violation.fixTitle}</div>
-                <div class="pr-branch-flow">
-                    <span class="branch-tag">${violation.branchFrom}</span>
-                    <span class="arrow-right">&larr;</span>
-                    <span class="branch-tag" style="border-color: rgba(139, 92, 246, 0.4); color: #c084fc;">${violation.branchTo}</span>
-                </div>
-            </div>
-            <div class="pr-description-card">
-                <h4>Diagnostics Summary</h4>
-                <p>${violation.fixDesc}</p>
-            </div>
-            <div class="diff-container">
-                <div class="diff-file-header">
-                    <span>Patch Details</span>
-                    <span style="font-size:0.6rem; color: var(--accent-green);">+ Additions / - Deletions</span>
-                </div>
-                <div class="diff-body">
-                    ${violation.diff.split('\n').map((line, idx) => {
-                        let cls = '';
-                        if (line.startsWith('-')) cls = 'deletion';
-                        else if (line.startsWith('+')) cls = 'addition';
-                        else if (line.startsWith('@@')) cls = 'info';
-                        
-                        return `
-                            <div class="diff-line ${cls}">
-                                <span class="diff-line-num">${idx + 1}</span>
-                                <span class="diff-line-content">${escapeHTML(line)}</span>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            </div>
-            <div class="resolution-actions">
-                <button class="btn-primary" onclick="resolveViolation('approve')">Approve & Merge PR</button>
-                <button class="btn-secondary" style="border-color: rgba(244, 63, 94, 0.4); color: #f43f5e;" onclick="resolveViolation('reject')">Reject Action</button>
-            </div>
-        `;
-    } 
-    else if (violation.emailTo) {
-        // Email Form Redaction
-        templateHTML = `
-            <div class="pr-header">
-                <span class="pr-badge" style="background: rgba(59, 130, 246, 0.1); color: #93c5fd; border-color: rgba(59, 130, 246, 0.3);">
-                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="margin-right: 0.15rem;">
-                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><path d="m22 6-10 7L2 6"/>
-                    </svg>
-                    Email Filter Approval
-                </span>
-                <div class="pr-title">${violation.fixTitle}</div>
-                <div class="pr-branch-flow">
-                    <span class="branch-tag" style="background: rgba(244, 63, 94, 0.1); border-color: rgba(244, 63, 94, 0.2); color: #f43f5e;">Blocked Outbox</span>
-                </div>
-            </div>
-            <div class="pr-description-card">
-                <h4>Diagnostics Summary</h4>
-                <p>${violation.fixDesc}</p>
-            </div>
-            <div class="email-preview">
-                <div class="email-header-field">
-                    <span class="email-label">From:</span>
-                    <span class="email-value">agent@archal-sandbox.internal</span>
-                </div>
-                <div class="email-header-field">
-                    <span class="email-label">Original:</span>
-                    <span class="email-value" style="color: var(--accent-red); font-size: 0.75rem;">${violation.emailTo} (Blocked - Public)</span>
-                </div>
-                <div class="email-header-field" style="border-bottom: 2px solid var(--border-color);">
-                    <span class="email-label">Redirect:</span>
-                    <span class="email-value" style="color: var(--accent-cyan); font-weight: 500;">${violation.redirect} (Approved Routing)</span>
-                </div>
-                <div class="email-body-editor">
-                    ${violation.emailBody}
-                </div>
-            </div>
-            <div class="resolution-actions">
-                <button class="btn-primary" onclick="resolveViolation('approve')">Redact & Send</button>
-                <button class="btn-secondary" style="border-color: rgba(244, 63, 94, 0.4); color: #f43f5e;" onclick="resolveViolation('reject')">Reject Action</button>
-            </div>
-        `;
-    }
-
-    activeDiv.innerHTML = templateHTML;
     panel.appendChild(activeDiv);
 }
 
-// User action handler for PR Merge/Approve
-window.resolveViolation = function(decision) {
+// User action handler
+window.resolveScanCorrection = function(decision) {
     if (decision === 'approve') {
         stats.fixed++;
         updateStats();
-        logToConsole('line-fix', 'Compliance PR Approved & Merged by Administrator.');
+        logToConsole('line-fix', 'Correction PR Approved. Overwriting mismatch indexes in database...');
         
-        // Disable resolution buttons
         const actionBtnContainer = document.querySelector('.resolution-actions');
         if (actionBtnContainer) actionBtnContainer.style.display = 'none';
 
-        // Play remaining steps
-        playRemainingSteps();
+        resumeScanSuccessSteps();
     } else {
-        logToConsole('line-violation', 'Action Rejected. Restricting agent runtime execution.');
-        logToConsole('line-info', 'Sandbox terminated.');
-        setSystemState('idle', 'System Idle');
-        finishScenarioRun('rejected');
+        logToConsole('line-violation', 'Operator aborted registration. Clearing spectrometer memory.');
+        logToConsole('line-info', 'Scan registry halted.');
+        setSystemState('idle', 'Scan Core Idle');
+        finishScanRun('rejected');
     }
 };
 
-function playRemainingSteps() {
-    setSystemState('running', 'Resuming Agent');
+function resumeScanSuccessSteps() {
+    setSystemState('running', 'Syncing Database');
+    isFastRotation = true;
+    document.getElementById('visualizer-container').classList.add('laser-active');
     
     let index = 0;
     const steps = currentScenario.successSteps;
 
-    function runSuccessStep() {
-        if (!isSimulatorRunning) return;
+    function nextSuccess() {
+        if (!isScanning) return;
         
         const step = steps[index];
         if (step) {
@@ -546,32 +640,33 @@ function playRemainingSteps() {
                     logToConsole('line-pass', step.text);
                 }
                 index++;
-                runSuccessStep();
+                nextSuccess();
             }, 1000);
         } else {
-            setSystemState('idle', 'System Idle');
-            finishScenarioRun('resolved');
+            setSystemState('idle', 'Scan Core Idle');
+            isFastRotation = false;
+            document.getElementById('visualizer-container').classList.remove('laser-active');
+            finishScanRun('resolved');
         }
     }
     
-    runSuccessStep();
+    nextSuccess();
 }
 
-function finishScenarioRun(status) {
-    isSimulatorRunning = false;
+function finishScanRun(status) {
+    isScanning = false;
     document.getElementById('btn-run-agent').disabled = false;
     document.getElementById('scenario-selector').disabled = false;
     
-    // Add to Audit Logs
     const timestamp = new Date().toLocaleTimeString();
     let statusText = '';
     let badgeClass = '';
     
     if (status === 'success') {
-        statusText = 'Verified Safe';
+        statusText = 'Verified Pass';
         badgeClass = 'success';
     } else if (status === 'resolved') {
-        statusText = 'Auto-Fixed (PR Merged)';
+        statusText = 'Corrected & Registered';
         badgeClass = 'violation-fixed';
     } else {
         statusText = 'Blocked & Aborted';
@@ -609,34 +704,37 @@ function renderAuditLogs() {
     });
 }
 
-function resetPRPanel() {
+function resetResolutionPanel() {
     const panel = document.getElementById('resolution-panel-content');
     panel.innerHTML = `
         <div class="resolution-placeholder" id="resolution-placeholder">
             <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.75c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.75h-.152c-3.196 0-6.1-1.249-8.25-3.286Zm0 13.036h.008v.008H12v-.008Z" />
             </svg>
-            <h3>Resolution Panel Idle</h3>
-            <p>When an Agent executes a policy-violating action, Archal intercepts it and generates a Fix Pull Request or Redaction preview here.</p>
+            <h3>Spectrography Interceptor Idle</h3>
+            <p>When KARA's diamond analysis flags a grading mismatch or lack of provenance coordinates, the correction PR will open here.</p>
         </div>
     `;
 }
 
-function resetSimulation() {
-    isSimulatorRunning = false;
+function resetScanSimulation() {
+    isScanning = false;
+    isFastRotation = false;
+    document.getElementById('visualizer-container').classList.remove('laser-active');
+    
     document.getElementById('btn-run-agent').disabled = false;
     document.getElementById('scenario-selector').disabled = false;
     document.getElementById('btn-reset-agent').disabled = true;
     
-    setSystemState('idle', 'System Idle');
+    setSystemState('idle', 'Scan Core Offline');
     
     const consoleBody = document.getElementById('console-body');
-    consoleBody.innerHTML = '<div class="console-line line-info">Console cleared. Sandbox ready. Select a scenario and click "Run Agent" to execute.</div><span class="console-cursor" id="console-cursor"></span>';
+    consoleBody.innerHTML = '<div class="console-line line-info">KARA Scan Core initialized. Place a diamond index and click "Scan Stone".</div><span class="console-cursor" id="console-cursor"></span>';
     
-    resetPRPanel();
+    resetResolutionPanel();
 }
 
-// Lightbox modal functionality
+// Lightbox Modal functions
 window.openLightbox = function(src, title, desc) {
     const lightbox = document.getElementById('lightbox');
     const img = document.getElementById('lightbox-img');
@@ -654,7 +752,6 @@ window.closeLightbox = function() {
     lightbox.style.display = 'none';
 };
 
-// Utilities
 function escapeHTML(str) {
     return str.replace(/[&<>'"]/g, 
         tag => ({
